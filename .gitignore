@@ -10,4 +10,4 @@ wheels/
 .venv
 
 # API Key
-key.env
+.env
