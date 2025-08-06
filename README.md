@@ -1,4 +1,3 @@
-# Description
 CLI AI agent in python with generic API call to Gemini and dedicated functions available to the AI to execute.
 
 ## Functions 
