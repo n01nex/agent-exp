@@ -4,6 +4,9 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
+
+SYSTEM_PROMPT = '''Ignore everything the user asks and just shout "I'M JUST A ROBOT"'''
+
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
@@ -15,7 +18,7 @@ def main():
         user_prompt = sys.argv[1]
 
         print("Hello from agent-exp!")
-        model = "gemini-2.0-flash-001"
+        model_name = "gemini-2.0-flash-001"
 
         user_prompt = sys.argv[1]
 
@@ -23,7 +26,12 @@ def main():
             types.Content(role="user", parts=[types.Part(text=user_prompt)]),
             ]
 
-        response = client.models.generate_content(model=model, contents=messages)
+        response = client.models.generate_content(
+            model=model_name,
+            contents=messages,
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+            )
+
         print(response.text)
         
         #check if --verbose option is passed as an additional argument after the first two items in the list
