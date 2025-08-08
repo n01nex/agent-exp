@@ -6,3 +6,9 @@ All functions are limited in scope of path in which they be executed or derive i
 - get_files_info : basic navigation info with bytesize with a given path (ls like)
 - write_files : creation of a file or override of an existing one
 - run_python : ability to run given python files
+- call_functions : actually call functions for the AI
+
+## Update 08/08/25
+
+The agent works and can read and overwrite files. Commands really have to be specific to avoid the AI nuking all existing content.
+Back-ups recommended

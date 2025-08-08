@@ -9,7 +9,7 @@ from functions.write_files import schema_write_file
 from functions.run_python import schema_run_python_file
 from functions.call_function import call_function
 
-
+MAX_ITERS = 20
 SYSTEM_PROMPT = """
 You are a helpful AI coding agent.
 
@@ -21,11 +21,9 @@ When a user asks a question or makes a request, make a function call plan. You c
 - Write or overwrite files
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
-"""
 
-load_dotenv()
-api_key = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
+IMPORTANT: When you see files listed (like main.py, tests.py), use those EXACT filenames without adding directory prefixes unless they are actually in subdirectories.
+"""
 
 available_functions = types.Tool(
     function_declarations=[
@@ -38,58 +36,88 @@ available_functions = types.Tool(
 
 def main():
 
-    # sys.argv is a list, 0 is the program, the rest are the attributes with which the program is called
-    try :
-        user_prompt = sys.argv[1]
-        verboseB = False
-        if "--verbose" in sys.argv[2:]:
-            verboseB = True
+    load_dotenv()
+    verboseB = "--verbose" in sys.argv
+
+    args = []
+    for arg in sys.argv[1:]:
+        if not arg.startswith("--"):
+            args.append(arg)
+
+    if not args:
+        print("AI Code Assistant")
+        print('\nUsage: python main.py "your prompt here" [--verbose]')
+        print('Example: python main.py "How do I fix the calculator?"')
+        sys.exit(1)
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+
+    user_prompt = " ".join(args)
+
+    if verboseB:
+        print(f"User prompt: {user_prompt}\n")
+    
+    messages = [
+        types.Content(role="user", parts=[types.Part(text=user_prompt)]),
+    ]
+
+    iters = 0
+    while True:
+        iters += 1
+        if iters > MAX_ITERS:
+            print(f"Maximum iterations ({MAX_ITERS}) reached.")
+            sys.exit(1)
+
+        try:
+            final_response = generate_content(client, messages, verboseB)
+            if final_response:
+                print("Final response:")
+                print(final_response)
+                break
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
 
 
-        print("Hello from agent-exp!")
-        model_name = "gemini-2.0-flash-001"
+def generate_content(client, messages, verboseB):
 
-        user_prompt = sys.argv[1]
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-001",
+        contents=messages,
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=SYSTEM_PROMPT
+        ),
+    )
 
-        messages = [
-            types.Content(role="user", parts=[types.Part(text=user_prompt)]),
-            ]
+    if verboseB:
+        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
+        print("Response tokens:", response.usage_metadata.candidates_token_count)
 
-        response = client.models.generate_content(
-            model=model_name,
-            contents=messages,
-            config=types.GenerateContentConfig(tools=[available_functions],system_instruction=SYSTEM_PROMPT),
-            )
+    if response.candidates:
+        for candidate in response.candidates:
+            function_call_content = candidate.content
+            messages.append(function_call_content)
 
-        if response.function_calls:
-            for call in response.function_calls:
-                #print(f"Calling function: {call.name}({call.args})")
+    if not response.function_calls:
+        return response.text
 
-                output = call_function(call, verbose=verboseB)
-                try:
-                    func_response = output.parts[0].function_response.response
-                    if verboseB:
-                        print(f"-> {output.parts[0].function_response.response}")
-                except Exception:
-                    raise Exception("Fatal: No response from function call")
-                    
-
-
-        else:
-            print(response.text)
-        
-        #check if --verbose option is passed as an additional argument after the first two items in the list
+    function_responses = []
+    for function_call_part in response.function_calls:
+        function_call_result = call_function(function_call_part, verboseB)
+        if (
+            not function_call_result.parts
+            or not function_call_result.parts[0].function_response
+        ):
+            raise Exception("empty function call result")
         if verboseB:
+            print(f"-> {function_call_result.parts[0].function_response.response}")
+        function_responses.append(function_call_result.parts[0])
 
-            prt_tokens = response.usage_metadata.prompt_token_count
-            rsp_tokens = response.usage_metadata.candidates_token_count
-            print(f"User prompt: {user_prompt}")
-            print(f"Prompt tokens: {prt_tokens}")
-            print(f"Response tokens: {rsp_tokens}")
+    if not function_responses:
+        raise Exception("no function responses generated, exiting.")
 
-    except IndexError:
-        raise Exception("No Prompt provided")
-        
+    messages.append(types.Content(role="tool", parts=function_responses))
+
 
 if __name__ == "__main__":
     main()
